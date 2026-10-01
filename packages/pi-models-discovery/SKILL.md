@@ -13,7 +13,7 @@ description: "配置与排查 models.json 的动态模型发现、缓存刷新�
 - `extensions/pi-models-discovery/cache.json`：启动缓存；
 - `models.json.discovery-bak`：交互配置写回前的备份。
 
-只处理带 `discoverModels: true` 的 provider。确认 `baseUrl`、`api`、可选 `apiKey`、headers/compat 以及服务的 `GET {baseUrl}/models` 响应。
+只处理带 `discoverModels: true` 的 provider。确认 `baseUrl`、`api`、可选 `modelsUrl` / `apiKey`、headers/compat 以及服务的模型列表响应。发现请求使用 `GET modelsUrl`（完整 URL，不追加 `/models`）；未配置或为空时使用 `GET {baseUrl}/models`。`modelsUrl` 仅影响发现和刷新，不改变聊天请求的 `baseUrl`；它会接收现有鉴权信息，须使用可信端点。
 
 ## 修改
 
