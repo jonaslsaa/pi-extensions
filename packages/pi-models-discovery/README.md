@@ -1,6 +1,6 @@
 # pi-models-discovery
 
-Generic model discovery extension: reads providers marked with `"discoverModels": true` in `~/.pi/agent/models.json`, requests `GET {baseUrl}/models`, and registers the discovered models automatically — no handwritten `models` array required. After the first successful discovery the model list is persisted to a local cache, so subsequent startups read the cache and **perform no network requests**.
+Generic model discovery extension: reads providers marked with `"discoverModels": true` in `~/.pi/agent/models.json`, requests `GET {baseUrl}/models` (or a configured `modelsUrl`), and registers the discovered models automatically — no handwritten `models` array required. After the first successful discovery the model list is persisted to a local cache, so subsequent startups read the cache and **perform no network requests**.
 
 Suitable for local/self-hosted LLM proxies (one gateway exposing many models), Ollama, vLLM, and other OpenAI-compatible services.
 
@@ -40,7 +40,25 @@ Add `"discoverModels": true` to a provider in `~/.pi/agent/models.json`:
 }
 ```
 
-`baseUrl` and `api` are required; `apiKey` is optional (omit for unauthenticated services). Multiple providers sharing the same `baseUrl+apiKey` reuse a single `/models` request.
+`baseUrl` and `api` are required; `apiKey` is optional (omit for unauthenticated services). Multiple providers sharing the same model-list URL, `apiKey`, `headers`, and `compat` reuse a single discovery request.
+
+If the model catalog uses a different endpoint, set the optional `modelsUrl` in models.json to its **complete URL** (including the path and any query parameters):
+
+```json
+{
+  "providers": {
+    "foo": {
+      "baseUrl": "https://api.example.com/v1",
+      "modelsUrl": "https://catalog.example.com/v1/models",
+      "apiKey": "$FOO_API_KEY",
+      "api": "openai-completions",
+      "discoverModels": true
+    }
+  }
+}
+```
+
+`modelsUrl` is used as-is for discovery and refresh only; chat requests still use `baseUrl`. When omitted or empty, discovery uses `{baseUrl}/models`. Discovery sends the provider's existing `apiKey` and `headers` to this URL, so use a trusted endpoint. The response format remains unchanged.
 
 Hand edits require `/reload` to take effect; changes made through `/config:model-discovery` apply immediately.
 
@@ -54,7 +72,7 @@ Forces a rediscovery of every discovery provider and updates the local cache, no
 
 ## Behavior
 
-- **Startup (cache-first)**: when the cache hits, models are registered directly from the persisted list with zero network requests. The cache lives at `~/.pi/agent/extensions/pi-models-discovery/cache.json`. The cache is invalidated automatically when the provider configuration fingerprint (baseUrl+api+apiKey+headers+compat) changes, triggering a fresh network discovery.
+- **Startup (cache-first)**: when the cache hits, models are registered directly from the persisted list with zero network requests. The cache lives at `~/.pi/agent/extensions/pi-models-discovery/cache.json`. The cache is invalidated automatically when the provider configuration fingerprint (baseUrl+api+apiKey+headers+compat+modelsUrl) changes, triggering a fresh network discovery.
 - **Online refresh**: `/config:model-discovery-refresh`, or the `refreshModels` hook triggered when opening `/model`, rediscovers online and updates the cache.
 - **Offline / fetch failure**: handwritten `models` in models.json (if any) are kept as a fallback, and an explicit warning is surfaced via in-session notify — never a silent degradation. One provider failing does not affect the others.
 - **apiKey resolution** (discovery request only): supports literals and `$ENV_VAR` / `${ENV_VAR}` interpolation; `!command` values skip discovery with an explicit warning (chat requests are still resolved by pi itself and are unaffected).

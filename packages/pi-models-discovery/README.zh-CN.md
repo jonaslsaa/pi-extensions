@@ -1,6 +1,6 @@
 # pi-models-discovery
 
-通用模型发现插件：读取 `~/.pi/agent/models.json` 中带 `"discoverModels": true` 的 provider，请求 `GET {baseUrl}/models` 自动发现模型并注册，无需手写 `models` 数组。首次发现成功后模型列表持久化到本地缓存，之后每次启动直接读缓存，**不再请求网络**。
+通用模型发现插件：读取 `~/.pi/agent/models.json` 中带 `"discoverModels": true` 的 provider，请求 `GET {baseUrl}/models`（或配置的 `modelsUrl`）自动发现模型并注册，无需手写 `models` 数组。首次发现成功后模型列表持久化到本地缓存，之后每次启动直接读缓存，**不再请求网络**。
 
 适合本地/自建 LLM 代理（一个网关暴露多个模型）、Ollama、vLLM 等 OpenAI 兼容服务。
 
@@ -40,7 +40,25 @@ pi install npm:pi-models-discovery
 }
 ```
 
-`baseUrl` 和 `api` 必填；`apiKey` 可选（无鉴权服务可省略）。同一 `baseUrl+apiKey` 的多个 provider 共享一次 `/models` 请求。
+`baseUrl` 和 `api` 必填；`apiKey` 可选（无鉴权服务可省略）。模型列表 URL、`apiKey`、`headers` 和 `compat` 相同的多个 provider 共享一次发现请求。
+
+如果模型列表使用不同的端点，可在 models.json 中设置可选的 `modelsUrl`，值为模型列表的**完整 URL**（包含路径和所需查询参数）：
+
+```json
+{
+  "providers": {
+    "foo": {
+      "baseUrl": "https://api.example.com/v1",
+      "modelsUrl": "https://catalog.example.com/v1/models",
+      "apiKey": "$FOO_API_KEY",
+      "api": "openai-completions",
+      "discoverModels": true
+    }
+  }
+}
+```
+
+`modelsUrl` 仅用于模型发现和刷新，按原值请求；聊天请求仍使用 `baseUrl`。未配置或为空时，沿用 `{baseUrl}/models`。发现请求会将 provider 现有的 `apiKey` 和 `headers` 发送到该 URL，请使用可信端点。响应格式保持不变。
 
 手编方式修改配置后需 `/reload` 生效；`/config:model-discovery` 命令的修改立即生效。
 
@@ -54,7 +72,7 @@ pi install npm:pi-models-discovery
 
 ## 行为
 
-- **启动（缓存优先）**：缓存命中时直接用持久化的模型列表注册，零网络请求；缓存文件位于 `~/.pi/agent/extensions/pi-models-discovery/cache.json`。provider 配置指纹（baseUrl+api+apiKey+headers+compat）变化时缓存自动失效，重新走网络发现。
+- **启动（缓存优先）**：缓存命中时直接用持久化的模型列表注册，零网络请求；缓存文件位于 `~/.pi/agent/extensions/pi-models-discovery/cache.json`。provider 配置指纹（baseUrl+api+apiKey+headers+compat+modelsUrl）变化时缓存自动失效，重新走网络发现。
 - **在线刷新**：`/config:model-discovery-refresh` 或 `/model` 打开时触发的 `refreshModels` 在线重新发现，并同步更新缓存。
 - **离线 / 拉取失败**：保留 models.json 里手写的 `models`（如有，作为回退），并通过会话内 notify 显式警告，不静默降级；单个 provider 失败不影响其他 provider。
 - **apiKey 解析**（仅发现请求）：支持字面量与 `$ENV_VAR` / `${ENV_VAR}` 插值；`!command` 形式跳过发现并显式警告（聊天请求仍由 pi 自身解析执行，不受影响）。

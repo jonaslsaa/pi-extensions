@@ -2,7 +2,7 @@
  * 通用模型发现插件
  *
  * 读取 models.json 中带 "discoverModels": true 的 provider，请求
- * GET {baseUrl}/models 自动发现模型并注册，无需手写 models 数组。
+ * GET modelsUrl（缺省为 {baseUrl}/models）自动发现模型并注册，无需手写 models 数组。
  *
  * 配置方式（二选一）：
  * 1. pi 终端内执行 /config:model-discovery，交互式添加/删除/重新发现 provider（推荐）；
@@ -22,14 +22,14 @@
  * 行为约定：
  * - 首次发现成功后，模型列表持久化到 ~/.pi/agent/extensions/pi-models-discovery/cache.json；
  *   之后每次启动直接读缓存注册，不请求网络。配置指纹
- *   （baseUrl+api+apiKey+headers+compat）变化时缓存自动失效，重新走网络发现。
+ *   （baseUrl+api+apiKey+headers+compat+modelsUrl）变化时缓存自动失效，重新走网络发现。
  * - /config:model-discovery-refresh 强制重新拉取所有发现 provider 并更新缓存；
  *   /model 打开时触发的在线 refreshModels 同样走网络并同步更新缓存。
  * - baseUrl / api 由扩展显式转发（pi 的 extension 组合层要求），
  *   apiKey / name / headers / compat 不写回注册配置，由 pi 的 models.json 层回落生效。
  * - provider 级 compat 会被合并进每个发现的模型（pi 的 models.json provider 级 compat
  *   不作用于 extension 注册的模型，故在此转发）。
- * - 同一 baseUrl+apiKey+headers 的多个 provider 共享一次 /models 请求。
+ * - 同一模型列表 URL+apiKey+headers+compat 的多个 provider 共享一次发现请求。
  * - 发现失败：该 provider 保留 models.json 手写 models（如有，作为离线回退），
  *   并通过 notify 显式警告，不静默降级；单个 provider 失败不影响其他 provider 注册。
  * - 注册 refreshModels：打开 /model 触发在线刷新时重新发现；
@@ -81,6 +81,7 @@ interface DiscoveryProviderEntry {
 	id: string;
 	name?: string;
 	baseUrl?: string;
+	modelsUrl?: string;
 	apiKey?: string;
 	api?: string;
 	headers?: Record<string, string>;
@@ -135,6 +136,8 @@ function providerFingerprint(entry: DiscoveryProviderEntry): string {
 		entry.apiKey ?? "",
 		entry.headers ?? {},
 		entry.compat ?? {},
+		// 未配置 modelsUrl 时保留已有指纹，避免让旧缓存失效。
+		...(entry.modelsUrl ? [entry.modelsUrl] : []),
 	]);
 }
 
@@ -250,6 +253,7 @@ function pickDiscoveryProviders(data: Record<string, unknown>): DiscoveryProvide
 			id,
 			name: typeof value.name === "string" ? value.name : undefined,
 			baseUrl: typeof value.baseUrl === "string" ? value.baseUrl : undefined,
+			modelsUrl: typeof value.modelsUrl === "string" ? value.modelsUrl : undefined,
 			apiKey: typeof value.apiKey === "string" ? value.apiKey : undefined,
 			api: typeof value.api === "string" ? value.api : undefined,
 			headers:
@@ -319,7 +323,12 @@ export function buildModel(
 	};
 }
 
-/** 请求 {baseUrl}/models 并解析为模型配置；失败抛错（错误信息带原因） */
+/** 模型列表的完整 URL；未配置时沿用 {baseUrl}/models。 */
+function getModelsUrl(entry: DiscoveryProviderEntry): string {
+	return entry.modelsUrl || `${(entry.baseUrl ?? "").replace(/\/+$/, "")}/models`;
+}
+
+/** 请求模型列表并解析为模型配置；失败抛错（错误信息带原因） */
 async function fetchModels(
 	entry: DiscoveryProviderEntry,
 	notices: Notice[],
@@ -348,7 +357,7 @@ async function fetchModels(
 			headers.Authorization = `Bearer ${resolved.value}`;
 		}
 	}
-	const url = `${entry.baseUrl.replace(/\/+$/, "")}/models`;
+	const url = getModelsUrl(entry);
 	let response: Response;
 	try {
 		response = await fetch(url, { headers, signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
@@ -377,11 +386,11 @@ async function fetchModels(
 	return models;
 }
 
-/** 共享 /models 请求的缓存：同一 baseUrl+apiKey+headers 只拉一次 */
+/** 缓存的是含 compat 的模型配置，只有 URL+apiKey+headers+compat 相同才可复用。 */
 type FetchCache = Map<string, Promise<ProviderModelConfig[]>>;
 
 function fetchWithCache(cache: FetchCache, entry: DiscoveryProviderEntry, notices: Notice[]): Promise<ProviderModelConfig[]> {
-	const cacheKey = `${entry.baseUrl}\n${entry.apiKey ?? ""}\n${JSON.stringify(entry.headers ?? {})}`;
+	const cacheKey = JSON.stringify([getModelsUrl(entry), entry.apiKey ?? "", entry.headers ?? {}, entry.compat ?? {}]);
 	let pending = cache.get(cacheKey);
 	if (!pending) {
 		pending = fetchModels(entry, notices);
@@ -724,7 +733,7 @@ function registerRefreshCommand(pi: ExtensionAPI, sink: NoticeSink) {
 				sink({ level: "info", message: i18n.t("refreshEmpty") }, ctx);
 				return;
 			}
-			// 每次刷新用新的请求级缓存：同 baseUrl 的 provider 仍共享一次请求，但不复用启动期结果
+			// 每次刷新用新的请求级缓存：同模型列表 URL 的 provider 仍共享请求，但不复用启动期结果
 			const fetchCache: FetchCache = new Map();
 			let ok = 0;
 			for (const entry of providers) {
