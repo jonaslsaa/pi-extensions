@@ -110,9 +110,11 @@ The `typesafe` transport exists because core hard-codes Vercel AI Gateway's endp
 
 `<Pi agent dir>/extensions/pi-gen-ui/config.json` (`PI_CODING_AGENT_DIR` is honored):
 
+The package ships **disabled** — `render_ui` and `compose_ui` are both refused until you turn it on with `/config:gen-ui enable` or set `enabled` to `true`.
+
 ```json
 {
-  "enabled": true,
+  "enabled": false,
   "maxResultLines": 60,
   "interactiveView": "auto",
   "composition": {
@@ -128,7 +130,7 @@ The `typesafe` transport exists because core hard-codes Vercel AI Gateway's endp
 
 | Key | Meaning |
 | --- | --- |
-| `enabled` | Whether `render_ui` renders panels at all. |
+| `enabled` | Whether `render_ui` renders panels at all. Defaults to `false`, so the tools stay off until you opt in. |
 | `maxResultLines` | Transcript lines a tool result shows before it collapses behind an expand hint. |
 | `interactiveView` | `auto` opens the panel only for specs with interactive components, `always` always opens it, `never` never does. A per-call `interactive` argument overrides it. |
 | `composition.enabled` | Whether `compose_ui` is offered. |

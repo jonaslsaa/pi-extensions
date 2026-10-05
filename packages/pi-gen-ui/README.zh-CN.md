@@ -110,9 +110,11 @@
 
 `<Pi agent 目录>/extensions/pi-gen-ui/config.json`（支持 `PI_CODING_AGENT_DIR`）：
 
+本包**默认禁用**：`render_ui` 和 `compose_ui` 都会被拒绝，直到用 `/config:gen-ui enable` 打开，或把 `enabled` 设为 `true`。
+
 ```json
 {
-  "enabled": true,
+  "enabled": false,
   "maxResultLines": 60,
   "interactiveView": "auto",
   "composition": {
@@ -128,7 +130,7 @@
 
 | 键 | 含义 |
 | --- | --- |
-| `enabled` | 关掉后 `render_ui` 不再渲染面板。 |
+| `enabled` | 关掉后 `render_ui` 不再渲染面板。默认 `false`，需手动开启。 |
 | `maxResultLines` | 工具结果在会话里最多画多少行，超出部分折叠成一行提示。 |
 | `interactiveView` | `auto` 只在 spec 含交互组件时开面板，`always` 总是开，`never` 从不打开；工具调用的 `interactive` 参数优先。 |
 | `composition.enabled` | 是否提供 `compose_ui`。 |

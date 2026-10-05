@@ -51,9 +51,9 @@ export interface JsonRenderConfig {
   composition: CompositionConfig;
 }
 
-/** Defaults, matching config.example.json. */
+/** Defaults, matching config.example.json. The package is opt-in: it ships disabled. */
 export const DEFAULT_CONFIG: JsonRenderConfig = {
-  enabled: true,
+  enabled: false,
   maxResultLines: 60,
   interactiveView: "auto",
   composition: {

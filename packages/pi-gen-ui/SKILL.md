@@ -5,11 +5,11 @@ description: "配置与排查 pi-gen-ui 的面板渲染、交互面板、结果�
 
 # 配置 pi-gen-ui
 
-配置文件为 `<Pi agent 目录>/extensions/pi-gen-ui/config.json`（支持 `PI_CODING_AGENT_DIR`）。默认值见包内 `config.example.json`：
+配置文件为 `<Pi agent 目录>/extensions/pi-gen-ui/config.json`（支持 `PI_CODING_AGENT_DIR`）。默认值见包内 `config.example.json`；本包**默认禁用**，需用 `/config:gen-ui enable` 或把 `enabled` 设为 `true` 才会工作：
 
 ```json
 {
-  "enabled": true,
+  "enabled": false,
   "maxResultLines": 60,
   "interactiveView": "auto",
   "composition": { "enabled": true, "provider": "auto", "model": "", "apiKeyEnv": "", "endpoint": "", "timeoutMs": 10000 }
@@ -18,7 +18,7 @@ description: "配置与排查 pi-gen-ui 的面板渲染、交互面板、结果�
 
 | 配置项 | 作用 |
 | --- | --- |
-| `enabled` | 关掉后 `render_ui` 不再渲染面板，直接返回提示。 |
+| `enabled` | 关掉后 `render_ui` 不再渲染面板，直接返回提示。默认 `false`，需手动开启。 |
 | `maxResultLines` | 工具结果在会话里最多画多少行，超出部分折叠成一行提示，展开后可见全部。 |
 | `interactiveView` | `auto` 只在 spec 含交互组件时开面板，`always` 总是开，`never` 从不打开。工具调用里的 `interactive` 参数优先级更高。 |
 | `composition.enabled` | 是否提供 `compose_ui`。 |
@@ -46,7 +46,7 @@ description: "配置与排查 pi-gen-ui 的面板渲染、交互面板、结果�
 
 ## 排查
 
-1. **没画出面板，只有一行摘要**：确认当前是 TUI 模式（非 TUI 时工具只返回文本摘要，结果里会写明模式）；再看 `enabled` 是否为 true。
+1. **没画出面板，只有一行摘要**：确认当前是 TUI 模式（非 TUI 时工具只返回文本摘要，结果里会写明模式）；再看 `enabled` 是否为 true（默认是 false，先跑 `/config:gen-ui enable`）。
 2. **组件没出现 / 布局不对**：先看工具结果里的警告。被忽略的 props、未知组件、未定义的 children key、非数组的 repeat 都会逐条列出，不会静默丢弃。`Box` 不支持 `flexWrap` 与绝对定位；列方向的 `justifyContent` 因为没有固定高度会被报告并忽略。
 3. **颜色没生效**：只支持命名终端色（`red`/`green`/`cyan`/`gray` 及 `*Bright`）和 `#rgb`/`#rrggbb`/`rgb(r,g,b)`。其他字符串会被忽略并报告。
 4. **交互组件按键没反应**：键盘只在面板打开时可用。`interactiveView` 为 `never`、或 spec 里没有交互组件且用 `auto` 时不会开面板；非 TUI 模式也没有面板。

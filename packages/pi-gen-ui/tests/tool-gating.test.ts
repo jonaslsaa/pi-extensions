@@ -4,9 +4,14 @@ import { createComposeUiTool } from "../src/compose-tool.ts";
 import { createRenderUiTool } from "../src/tool.ts";
 import { DEFAULT_CONFIG, type JsonRenderConfig } from "../src/config.ts";
 
-/** A configuration with the master switch flipped. */
+/** A configuration with the master switch flipped off. */
 function disabled(): JsonRenderConfig {
 	return { ...DEFAULT_CONFIG, composition: { ...DEFAULT_CONFIG.composition }, enabled: false };
+}
+
+/** A configuration with the master switch on, used to reach the later gates. */
+function enabled(): JsonRenderConfig {
+	return { ...DEFAULT_CONFIG, composition: { ...DEFAULT_CONFIG.composition }, enabled: true };
 }
 
 /** A candidate the composer could place; only used to reach the gates under test. */
@@ -66,7 +71,7 @@ test("the master switch stops render_ui as well", async () => {
 
 test("a disabled composer is reported instead of attempted", async () => {
 	const tool = createComposeUiTool({
-		getConfig: () => ({ ...DEFAULT_CONFIG, composition: { ...DEFAULT_CONFIG.composition } }),
+		getConfig: enabled,
 		getAvailability: () => ({ available: false, reason: "disabled" }),
 	});
 	const { result, fetchCalls } = await withoutNetwork(() =>
@@ -82,7 +87,7 @@ test("the master switch and the composition switch report different reasons", as
 		getAvailability: () => ({ available: true }),
 	});
 	const missingKeyTool = createComposeUiTool({
-		getConfig: () => ({ ...DEFAULT_CONFIG, composition: { ...DEFAULT_CONFIG.composition } }),
+		getConfig: enabled,
 		getAvailability: () => ({ available: false, reason: "missingKey" }),
 	});
 	const params = { prompt: "panel", candidates: [candidate] };
