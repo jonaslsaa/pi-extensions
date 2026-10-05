@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.8.0](https://github.com/maplezzk/pi-extensions/compare/pi-metrics-v0.7.1...pi-metrics-v0.8.0) (2026-10-05)
+
+
+### Features
+
+* **pi-metrics,pi-dynamic-workflows:** 配置命令改用 SettingsList 面板 ([07de307](https://github.com/maplezzk/pi-extensions/commit/07de3077e6558881c7b050908624176b0327eac1))
+* 统一全仓库配置 UI 为 SettingsList 面板 + 新增 pi-gen-ui ([c67a8c3](https://github.com/maplezzk/pi-extensions/commit/c67a8c3356f249ef5a49699d05ad2824b2ac008a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * pi-extensions-i18n bumped from ^0.8.0 to ^0.9.0
+
 ## [0.7.1](https://github.com/maplezzk/pi-extensions/compare/pi-metrics-v0.7.0...pi-metrics-v0.7.1) (2026-09-21)
 
 

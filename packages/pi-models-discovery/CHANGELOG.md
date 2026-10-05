@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.6.0](https://github.com/maplezzk/pi-extensions/compare/pi-models-discovery-v1.5.0...pi-models-discovery-v1.6.0) (2026-10-05)
+
+
+### Features
+
+* 统一全仓库配置 UI 为 SettingsList 面板 + 新增 pi-gen-ui ([c67a8c3](https://github.com/maplezzk/pi-extensions/commit/c67a8c3356f249ef5a49699d05ad2824b2ac008a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * pi-extensions-i18n bumped from ^0.8.0 to ^0.9.0
+
 ## [1.5.0](https://github.com/maplezzk/pi-extensions/compare/pi-models-discovery-v1.4.0...pi-models-discovery-v1.5.0) (2026-10-04)
 
 

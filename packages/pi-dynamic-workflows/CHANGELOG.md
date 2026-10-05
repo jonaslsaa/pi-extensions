@@ -1,5 +1,25 @@
 # Changelog
 
+## [1.5.0](https://github.com/maplezzk/pi-extensions/compare/pi-dynamic-workflows-v1.4.2...pi-dynamic-workflows-v1.5.0) (2026-10-05)
+
+
+### Features
+
+* **pi-metrics,pi-dynamic-workflows:** 配置命令改用 SettingsList 面板 ([07de307](https://github.com/maplezzk/pi-extensions/commit/07de3077e6558881c7b050908624176b0327eac1))
+* 统一全仓库配置 UI 为 SettingsList 面板 + 新增 pi-gen-ui ([c67a8c3](https://github.com/maplezzk/pi-extensions/commit/c67a8c3356f249ef5a49699d05ad2824b2ac008a))
+
+
+### Bug Fixes
+
+* **pi-dynamic-workflows:** 配置字段名保持 async，不引入破坏性改名 ([be6f2ac](https://github.com/maplezzk/pi-extensions/commit/be6f2aca882ed4e0a69af4605b00cc138a14fd41))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * pi-extensions-i18n bumped from ^0.8.0 to ^0.9.0
+
 ## [1.4.2](https://github.com/maplezzk/pi-extensions/compare/pi-dynamic-workflows-v1.4.1...pi-dynamic-workflows-v1.4.2) (2026-09-21)
 
 
