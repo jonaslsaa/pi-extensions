@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.8.0](https://github.com/maplezzk/pi-extensions/compare/pi-session-resources-v0.7.1...pi-session-resources-v0.8.0) (2026-10-05)
+
+
+### Features
+
+* **pi-session-resources,pi-session-tools:** 配置命令补齐 SettingsList 面板 ([81dfc83](https://github.com/maplezzk/pi-extensions/commit/81dfc83bf4b17aaf087150712f979ecd5fc0a375))
+* 统一全仓库配置 UI 为 SettingsList 面板 + 新增 pi-gen-ui ([c67a8c3](https://github.com/maplezzk/pi-extensions/commit/c67a8c3356f249ef5a49699d05ad2824b2ac008a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * pi-extensions-i18n bumped from ^0.8.0 to ^0.9.0
+
 ## [0.7.1](https://github.com/maplezzk/pi-extensions/compare/pi-session-resources-v0.7.0...pi-session-resources-v0.7.1) (2026-09-21)
 
 

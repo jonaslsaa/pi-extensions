@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.9.0](https://github.com/maplezzk/pi-extensions/compare/pi-session-tools-v0.8.0...pi-session-tools-v0.9.0) (2026-10-05)
+
+
+### Features
+
+* **pi-session-resources,pi-session-tools:** 配置命令补齐 SettingsList 面板 ([81dfc83](https://github.com/maplezzk/pi-extensions/commit/81dfc83bf4b17aaf087150712f979ecd5fc0a375))
+* 统一全仓库配置 UI 为 SettingsList 面板 + 新增 pi-gen-ui ([c67a8c3](https://github.com/maplezzk/pi-extensions/commit/c67a8c3356f249ef5a49699d05ad2824b2ac008a))
+
+
+### Bug Fixes
+
+* **pi-session-tools:** 压缩后把 system 消息放回请求头，避免丢失提示与工具声明 ([564d096](https://github.com/maplezzk/pi-extensions/commit/564d096dc997f729158babedfd0116d3e2b8b906))
+* **pi-session-tools:** 压缩后把 system 消息放回请求头，避免丢失提示与工具声明 ([b17ca07](https://github.com/maplezzk/pi-extensions/commit/b17ca07105e1e9af8d50295b15bf41bff6e8a623))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * pi-extensions-i18n bumped from ^0.8.0 to ^0.9.0
+
 ## [0.8.0](https://github.com/maplezzk/pi-extensions/compare/pi-session-tools-v0.7.1...pi-session-tools-v0.8.0) (2026-09-21)
 
 

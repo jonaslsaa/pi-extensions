@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.10.0](https://github.com/maplezzk/pi-extensions/compare/pi-distill-v1.9.3...pi-distill-v1.10.0) (2026-10-05)
+
+
+### Features
+
+* 统一全仓库配置 UI 为 SettingsList 面板 + 新增 pi-gen-ui ([c67a8c3](https://github.com/maplezzk/pi-extensions/commit/c67a8c3356f249ef5a49699d05ad2824b2ac008a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * pi-extensions-i18n bumped from ^0.8.0 to ^0.9.0
+    * pi-extensions-tool-display bumped from ^1.3.2 to ^1.3.3
+
 ## [1.9.3](https://github.com/maplezzk/pi-extensions/compare/pi-distill-v1.9.2...pi-distill-v1.9.3) (2026-10-04)
 
 

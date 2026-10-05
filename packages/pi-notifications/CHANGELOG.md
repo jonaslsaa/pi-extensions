@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.5.0](https://github.com/maplezzk/pi-extensions/compare/pi-notifications-v0.4.2...pi-notifications-v0.5.0) (2026-10-05)
+
+
+### Features
+
+* 把 pi-notifications 与 pi-nested-skills 的配置改成 SettingsList 面板 ([e07845b](https://github.com/maplezzk/pi-extensions/commit/e07845b70dc2611e21f16767acd915bd732e1ace))
+* 统一全仓库配置 UI 为 SettingsList 面板 + 新增 pi-gen-ui ([c67a8c3](https://github.com/maplezzk/pi-extensions/commit/c67a8c3356f249ef5a49699d05ad2824b2ac008a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * pi-extensions-i18n bumped from ^0.8.0 to ^0.9.0
+
 ## [0.4.2](https://github.com/maplezzk/pi-extensions/compare/pi-notifications-v0.4.1...pi-notifications-v0.4.2) (2026-09-21)
 
 

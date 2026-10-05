@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.3.3](https://github.com/maplezzk/pi-extensions/compare/pi-extensions-tool-display-v1.3.2...pi-extensions-tool-display-v1.3.3) (2026-10-05)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * pi-extensions-i18n bumped from ^0.8.0 to ^0.9.0
+
 ## [1.3.2](https://github.com/maplezzk/pi-extensions/compare/pi-extensions-tool-display-v1.3.1...pi-extensions-tool-display-v1.3.2) (2026-09-21)
 
 
