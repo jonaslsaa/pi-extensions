@@ -452,8 +452,9 @@ test("session-squash 快照以 compaction summary 语义注入上下文", async 
 });
 
 /**
- * Pi 0.86 起 provider 从消息列表推导 instructions 与 tools，system 消息不属于对话条目，
- * 分支重建时必须继续携带，否则压缩后的模型会认为环境没有提供任何工具。
+ * Pi 0.85/0.86：provider 从消息列表推导 instructions 与 tools，system 消息不属于对话条目，
+ * 分支重建时必须继续携带，否则压缩后的模型会认为环境没有提供任何工具（0.87 起该由下面的
+ * context_with_system 负责，此路径自然为空，见「Pi 0.87 起在 context_with_system 里补回」）。
  */
 test("压缩分支重建上下文时保留运行时 system 消息", async () => {
   type Handler = (event: unknown, ctx: unknown) => unknown | Promise<unknown>;
@@ -600,4 +601,230 @@ test("分支自带的 system 消息不会被重复携带", async () => {
     ["system", "compactionSummary"],
   );
   assert.equal(result.messages[0]?.timestamp, 222);
+});
+
+/**
+ * Pi 0.87 起 `context` 处理器看不到 system 消息，Pi 只在运行时消息里仍有 system 头时才把它
+ * 放回请求最前面。压缩用 branch() 换分支后新分支里没有 system 条目，provider 只能从
+ * leading system 消息推导 instructions 与 tools，请求就丢掉系统提示和工具声明。
+ * 这里验证：压缩前抓到的 system 消息会在压缩后的下一轮请求里回到 index 0。
+ */
+test("压缩后的请求用压缩前抓到的 system 消息补回提示与工具声明", async () => {
+  type Handler = (event: unknown, ctx: unknown) => unknown | Promise<unknown>;
+  const moduleUrl = new URL("../src/session-tail-compaction.ts", import.meta.url);
+  moduleUrl.searchParams.set("system-aware-test", "enabled");
+  const { default: sessionTailCompaction } = await import(moduleUrl.href);
+
+  const systemHead = {
+    role: "system",
+    content: "",
+    sections: { rules: "运行时下发的规则" },
+    toolsAdded: [
+      { name: "bash", description: "运行命令", parameters: { type: "object" } },
+    ],
+    timestamp: 111,
+  };
+  const userEntry: SessionEntry = {
+    type: "message",
+    id: "user-1",
+    parentId: "sys-0",
+    timestamp: "2026-01-01T00:00:00.000Z",
+    message: { role: "user", content: "已完成任务", timestamp: 1 },
+  };
+  const assistantEntry: SessionEntry = {
+    type: "message",
+    id: "assistant-1",
+    parentId: "user-1",
+    timestamp: "2026-01-01T00:00:00.500Z",
+    message: {
+      role: "assistant",
+      content: [{ type: "text", text: "已完成。" }],
+      api: "test",
+      provider: "test",
+      model: "test",
+      usage: {
+        input: 0,
+        output: 0,
+        cacheRead: 0,
+        cacheWrite: 0,
+        totalTokens: 0,
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+      },
+      stopReason: "stop",
+      timestamp: 2,
+    },
+  };
+  const systemEntry = {
+    type: "message",
+    id: "sys-0",
+    parentId: null,
+    timestamp: "2025-12-31T23:59:59.000Z",
+    message: systemHead,
+  } as SessionEntry;
+  const squashEntry: SessionEntry = {
+    type: "custom_message",
+    id: "squash-1",
+    parentId: "user-1",
+    timestamp: "2026-01-01T00:00:01.000Z",
+    customType: SESSION_SQUASH_TYPE,
+    content: "快照",
+    display: true,
+    details: {
+      startEntryId: "user-1",
+      sourceLeafId: "assistant-1",
+      fromUserInputIndex: 0,
+      summary: "快照",
+      tokensBefore: 10,
+    },
+  };
+
+  const tools: RegisteredTool[] = [];
+  const handlers = new Map<string, Handler>();
+  const notifications: string[] = [];
+  const branchTargets: string[] = [];
+  // 压缩前：transcript 里有 system 头；压缩后：新分支只剩起点 user turn 和快照。
+  let branch: SessionEntry[] = [systemEntry, userEntry, assistantEntry];
+  const sessionManager = {
+    getBranch: () => branch,
+    getSessionId: () => "session-1",
+    getLeafId: () => "assistant-1",
+    buildContextEntries: () => branch,
+    /** 压缩前的 session 投影，扩展靠它抓 system 头。 */
+    buildSessionContext: () => ({
+      messages: [systemHead, userEntry.message, assistantEntry.message],
+    }),
+    branch(entryId: string) {
+      branchTargets.push(entryId);
+      branch = branch.filter((entry) => entry.id === entryId);
+    },
+  };
+  const context = {
+    sessionManager,
+    model: { contextWindow: 2000 },
+    hasUI: true,
+    getContextUsage: () => ({ tokens: 100, contextWindow: 4000, percent: 2.5 }),
+    ui: { notify: (text: string) => notifications.push(text) },
+  };
+  let activeTools = ["read", "bash", "session_log", "session_squash"];
+  const pi = {
+    registerTool: (tool: RegisteredTool) => tools.push(tool),
+    registerCommand: () => undefined,
+    on: (eventName: string, handler: Handler) => handlers.set(eventName, handler),
+    getActiveTools: () => [...activeTools],
+    setActiveTools: (toolNames: string[]) => {
+      activeTools = [...toolNames];
+    },
+    /** 模拟 Pi 把摘要写进当前 leaf：分支变成「起点 user turn + 快照」。 */
+    sendMessage: (message: unknown) => {
+      if ((message as { customType?: string }).customType === SESSION_SQUASH_TYPE) {
+        branch = [userEntry, squashEntry];
+      }
+    },
+  } as unknown as ExtensionAPI;
+  sessionTailCompaction(pi);
+
+  const squashTool = tools.find((tool) => tool.name === "session_squash");
+  const agentEnd = handlers.get("agent_end");
+  const settled = handlers.get("agent_settled");
+  const systemAware = handlers.get("context_with_system");
+  assert.ok(squashTool);
+  assert.ok(agentEnd);
+  assert.ok(settled);
+  assert.ok(systemAware);
+
+  const result = await squashTool.execute(
+    "tool-1",
+    { from: 0, summary: VALID_HANDOFF_SUMMARY, continuation: "auto" },
+    undefined,
+    undefined,
+    context,
+  );
+  assert.equal(result.isError, false);
+  assert.equal(result.terminate, true);
+  await agentEnd({ messages: [{ role: "assistant", stopReason: "stop" }] }, context);
+  await settled({}, context);
+  assert.deepEqual(branchTargets, ["user-1"]);
+
+  // 压缩刚完成的那一轮请求已经没有 system 消息（Pi 0.87 的 context 事件也不给）。
+  const carried = await systemAware(
+    { type: "context_with_system", messages: [{ role: "user", content: "改", timestamp: 300 }] },
+    context,
+  ) as { messages: Array<{ role?: string; toolsAdded?: Array<{ name: string }>; summary?: string }> };
+
+  assert.deepEqual(
+    carried.messages.map((message) => message.role),
+    ["system", "user", "compactionSummary"],
+    "system 头必须回到 index 0，否则 provider 推导不出 tools",
+  );
+  assert.deepEqual(
+    carried.messages[0]?.toolsAdded?.map((tool) => tool.name),
+    ["bash"],
+  );
+  assert.equal(carried.messages[2]?.summary, "快照");
+
+  // 后续轮次 Pi 重新持久化了 system 补丁时，以请求里的那份为准，不重复携带。
+  const refreshedSystem = {
+    role: "system",
+    content: "",
+    sections: { rules: "压缩后重新下发的规则" },
+    toolsAdded: [
+      { name: "read", description: "读取文件", parameters: { type: "object" } },
+    ],
+    timestamp: 400,
+  };
+  const refreshed = await systemAware(
+    {
+      type: "context_with_system",
+      messages: [refreshedSystem, { role: "user", content: "继续", timestamp: 401 }],
+    },
+    context,
+  ) as { messages: Array<{ role?: string; timestamp?: number }> };
+
+  assert.deepEqual(
+    refreshed.messages.map((message) => message.role),
+    ["system", "user", "compactionSummary"],
+  );
+  assert.equal(refreshed.messages[0]?.timestamp, 400);
+  assert.ok(
+    refreshed.messages.filter((message) => message.role === "system").length === 1,
+    "同一份 system 声明不能出现两次",
+  );
+});
+
+/** 还没有压缩过的会话里，full transcript 钩子不改动 Pi 的请求。 */
+test("未压缩的会话不干预 context_with_system", async () => {
+  type Handler = (event: unknown, ctx: unknown) => unknown | Promise<unknown>;
+  const moduleUrl = new URL("../src/session-tail-compaction.ts", import.meta.url);
+  moduleUrl.searchParams.set("system-aware-passthrough-test", "enabled");
+  const { default: sessionTailCompaction } = await import(moduleUrl.href);
+  const handlers = new Map<string, Handler>();
+  const systemHead = { role: "system", content: "提示", timestamp: 111 };
+  const userEntry: SessionEntry = {
+    type: "message",
+    id: "user-1",
+    parentId: null,
+    timestamp: "2026-01-01T00:00:00.000Z",
+    message: { role: "user", content: "任务", timestamp: 1 },
+  };
+  const pi = {
+    registerTool: () => undefined,
+    registerCommand: () => undefined,
+    on: (eventName: string, handler: Handler) => handlers.set(eventName, handler),
+  } as unknown as ExtensionAPI;
+  sessionTailCompaction(pi);
+
+  const systemAware = handlers.get("context_with_system");
+  assert.ok(systemAware);
+  const passed = await systemAware(
+    { type: "context_with_system", messages: [systemHead, userEntry.message] },
+    {
+      sessionManager: {
+        getBranch: () => [userEntry],
+        buildContextEntries: () => [userEntry],
+        getSessionId: () => "session-1",
+      },
+    },
+  );
+
+  assert.equal(passed, undefined);
 });
