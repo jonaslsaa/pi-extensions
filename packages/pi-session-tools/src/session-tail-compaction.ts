@@ -94,6 +94,56 @@ function messageTimestamp(message: RuntimeMessage): number {
   return (message as { timestamp?: number }).timestamp ?? 0;
 }
 
+/** 压缩前捕获的 system 消息（承载系统提示与工具声明），按 session 隔离。 */
+type CapturedSystemMessages = {
+  sessionId: string;
+  messages: RuntimeMessage[];
+};
+
+/**
+ * Pi ≥0.87 的 `context_with_system`：full transcript（含 system 消息），返回值原样生效。
+ * 0.85/0.86 的类型里没有这个事件，所以只在运行时按名字注册，旧版本不会触发。
+ */
+type SystemAwareContextEvent = {
+  type: "context_with_system";
+  messages: RuntimeMessage[];
+};
+
+type SystemAwareContextResult = { messages: RuntimeMessage[] };
+
+type SystemAwareContextHandler = (
+  event: SystemAwareContextEvent,
+  ctx: ExtensionContext,
+) => SystemAwareContextResult | undefined;
+
+/** 注册 full transcript 钩子；Pi 0.85/0.86 不认识该事件名，注册后不会收到回调。 */
+function registerSystemAwareContext(
+  pi: ExtensionAPI,
+  handler: SystemAwareContextHandler,
+): void {
+  const on = pi.on as unknown as (
+    event: "context_with_system",
+    handler: SystemAwareContextHandler,
+  ) => void;
+  on("context_with_system", handler);
+}
+
+/**
+ * 从当前 session 投影中抓取 system 消息。
+ * Pi 0.85/0.86 的只读 SessionManager 类型没有暴露 buildSessionContext，因此按运行时能力探测。
+ */
+function captureSystemMessages(
+  ctx: ExtensionContext,
+  sessionId: string,
+): CapturedSystemMessages | null {
+  const sessionManager = ctx.sessionManager as unknown as {
+    buildSessionContext?: () => { messages: RuntimeMessage[] };
+  };
+  const messages = sessionManager.buildSessionContext?.().messages ?? [];
+  const systemMessages = messages.filter(isRuntimeSystemMessage);
+  return systemMessages.length > 0 ? { sessionId, messages: systemMessages } : null;
+}
+
 /** validateTailStart 失败码 → i18n key 的映射，集中维护。 */
 const TAIL_START_ERROR_I18N_KEY: Record<TailStartErrorCode, string> = {
   [TAIL_START_ERROR.inputNotFound]: "validateInputNotFound",
@@ -370,6 +420,8 @@ function textResult(text: string, isError = false) {
 export default function contextFoldExtension(pi: ExtensionAPI) {
   let latestAgentRunStoppedNormally = false;
   let forceState: ForceSquashState | null = null;
+  /** 压缩前抓到的 system 消息；压缩刚完成的那一轮请求已经看不到它们。 */
+  let capturedSystemMessages: CapturedSystemMessages | null = null;
 
   // 摘要消息默认收起为一行，Ctrl+O 展开；否则长快照会把压缩前的最后一条回答顶出屏幕。
   registerSquashMessageRenderer(pi);
@@ -621,6 +673,9 @@ export default function contextFoldExtension(pi: ExtensionAPI) {
       // continuation=next-user 会阻止已完成任务立即重答这条旧 prompt。
       const sessionManager =
         ctx.sessionManager as unknown as SessionManager;
+      // branch() 之后新分支里没有任何 system 条目，先把当前的 system 消息（系统提示与
+      // 工具声明）抓下来，交给 context_with_system 放回请求的最前面。
+      capturedSystemMessages = captureSystemMessages(ctx, request.sessionId);
       sessionManager.branch(request.startEntryId);
 
       // sendMessage 同时把 summary 追加到 AgentSession 内存和当前新 leaf。
@@ -652,6 +707,7 @@ export default function contextFoldExtension(pi: ExtensionAPI) {
 
   pi.on("session_shutdown", () => {
     restoreToolsAfterForce();
+    capturedSystemMessages = null;
   });
 
   /**
@@ -685,9 +741,9 @@ export default function contextFoldExtension(pi: ExtensionAPI) {
   // 保留旧分支。下一次 provider 请求前，以当前 active branch 重建 context，
   // 确保模型和 /tree 看到同一条新分支。
   //
-  // system 消息不是可分支的对话内容：它承载系统提示与工具声明，只存在于运行时的消息
-  // 数组里，压缩起点之后的新分支没有对应条目。Pi 0.86 起 provider 直接从消息列表
-  // 推导 instructions 与 tools，重建时丢掉它，模型就会说「环境没有提供工具」。
+  // Pi 0.85/0.86：`context` 事件仍把运行时的 system 消息交给扩展，这里把分支里没有的
+  // 携带回请求头部。Pi 0.87 起该事件只给对话消息（system 消息由 Pi 自己恢复），
+  // 这段过滤自然为空，真正的修复在下面的 `context_with_system`。
   pi.on("context", async (event, ctx) => {
     const branch = ctx.sessionManager.getBranch();
     if (getTailCompactions(branch).length === 0) return;
@@ -706,6 +762,38 @@ export default function contextFoldExtension(pi: ExtensionAPI) {
             !declaredSystemTimestamps.has(messageTimestamp(message)),
         ),
         ...rebuilt,
+      ],
+    };
+  });
+
+  // Pi ≥0.87：`context` 处理器看不到 system 消息，Pi 只在运行时消息里仍有 system 头时
+  // 才把它放回请求最前面。压缩用 branch() 换分支后分支里没有 system 条目，
+  // provider 只能从 leading system 消息推导 instructions 与 tools，请求因此丢提示和工具，
+  // 模型会回答「当前会话没有文件编辑或命令执行工具」。这里在 full transcript 钩子里把
+  // system 消息搬回 index 0；被折叠掉的那份用压缩前抓到的快照补回。
+  registerSystemAwareContext(pi, (event, ctx) => {
+    const sessionId = ctx.sessionManager.getSessionId();
+    const currentSystemMessages = (event.messages ?? []).filter(isRuntimeSystemMessage);
+    // 只在拿到真实 system 消息时刷新快照，避免压缩后第一轮用空列表覆盖掉压缩前的头。
+    if (currentSystemMessages.length > 0) {
+      capturedSystemMessages = { sessionId, messages: currentSystemMessages };
+    }
+
+    const branch = ctx.sessionManager.getBranch();
+    if (getTailCompactions(branch).length === 0) return undefined;
+
+    const rebuilt = ctx.sessionManager
+      .buildContextEntries()
+      .flatMap(toSessionContextMessages);
+    const carried = currentSystemMessages.length > 0
+      ? currentSystemMessages
+      : capturedSystemMessages?.sessionId === sessionId
+        ? capturedSystemMessages.messages
+        : [];
+    return {
+      messages: [
+        ...carried,
+        ...rebuilt.filter((message) => !isRuntimeSystemMessage(message)),
       ],
     };
   });

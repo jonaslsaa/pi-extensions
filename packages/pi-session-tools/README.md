@@ -21,6 +21,10 @@ Squash at a safe task or phase checkpoint, such as after a phase or verification
 pi install npm:pi-session-tools
 ```
 
+## Compatibility
+
+Squashing replaces the session suffix with a branch, and a rebuilt branch carries no system message. Pi derives the prompt and the request's tool declarations from the leading system message, so a squash would otherwise leave the next request without built-in tools. The extension keeps the system message it saw before the squash and restores it at the head of the request: through `context_with_system` on Pi 0.87 and newer, and through the legacy `context` event on Pi 0.85 and 0.86.
+
 ## Context threshold nudges
 
 When the conversation crosses a threshold (default 150k / 200k / 250k / 300k tokens), the nudge shows the agent `used tokens / context window (percentage)` and asks it to squash at the nearest safe task or phase checkpoint without waiting for the whole task to finish. The nudge is advisory and runs only after the model stops normally; user aborts and provider errors do not trigger it. Configure it:

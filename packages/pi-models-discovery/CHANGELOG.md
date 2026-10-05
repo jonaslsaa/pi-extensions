@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.5.0](https://github.com/maplezzk/pi-extensions/compare/pi-models-discovery-v1.4.0...pi-models-discovery-v1.5.0) (2026-10-04)
+
+
+### Features
+
+* **pi-models-discovery:** 支持通过 modelsUrl 独立配置模型发现地址 ([c218e98](https://github.com/maplezzk/pi-extensions/commit/c218e983782658751d2b0ae88bb1ca15cbce6e57))
+* **pi-models-discovery:** 支持通过 modelsUrl 独立配置模型发现地址 ([b9b6c3d](https://github.com/maplezzk/pi-extensions/commit/b9b6c3dbc18db0a588b107e483cffbaabe41adb4))
+
 ## [1.4.0](https://github.com/maplezzk/pi-extensions/compare/pi-models-discovery-v1.3.1...pi-models-discovery-v1.4.0) (2026-09-21)
 
 
