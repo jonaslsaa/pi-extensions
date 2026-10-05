@@ -12,6 +12,10 @@ pi install npm:pi-session-tools
 
 随后执行 `/reload`。
 
+## 兼容性
+
+压缩会用新分支替换会话后缀，而重建出来的分支里没有 system 消息。Pi 的系统提示和请求里的工具声明都取自 leading system 消息，所以压缩后的下一轮请求会丢掉内置工具。扩展会保留压缩前看到的 system 消息并把它放回请求最前面：Pi 0.87 及更新版本走 `context_with_system`，Pi 0.85/0.86 走旧的 `context` 事件。
+
 ## 功能
 
 - 当 bash 管道中使用 `grep`、`tail` 或 `head` 过滤输出时，将过滤前的完整输出写入系统临时目录下的 `pi-pipe-cache/`，并在结果中给出路径，可以直接对缓存文件重新过滤而不用重跑命令。
