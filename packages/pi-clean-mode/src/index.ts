@@ -519,6 +519,11 @@ function installPatches(runtime: Runtime): void {
 		isHistoryRestoreWindow: () => runtime.historyRestoreWindow,
 		// 运行期间的扩展条目接上轨道：它们铺满整宽，本来会把左侧轨道切断。
 		getEntryRailPrefix: () => renderGutterPrefix(runtime.styler),
+		// 接轨道的块用的底色就是工具行那两档，两侧的左边缘才不会错开（见 applyEntryRail）。
+		getEntryBandPainters: () => ({
+			success: runtime.styler.successBg,
+			error: runtime.styler.errorBg,
+		}),
 		// pi-tui 可能被装成两份，条目组件继承的那份从 Pi 导出的组件往上取。
 		containerPrototypes: resolveContainerPrototypes({
 			ownContainerPrototype: Container.prototype,

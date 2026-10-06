@@ -19,11 +19,15 @@
  * 运行结束后才出现的条目（提示、汇总）保持可见；pi-extensions-i18n 的通知条目按级别区分
  * —— `info` 级（metrics 的逐轮遥测、配置保存成功）属于过程噪声，跟着工作过程一起收起；
  * `warning` / `error` 是扩展出错时唯一能说话的地方，无论何时都留着，否则警告会被静默吞掉。
+ *
+ * 同一个补丁还负责「运行期间把块接上左侧轨道」，见 applyEntryRail / applyEntryBand ——
+ * 接轨道的块铺的是工具行那套底色，不是自己那层块底色。
  */
 
 import { Container, visibleWidth } from "@earendil-works/pi-tui";
 import { NOTICE_ENTRY_TYPE } from "pi-extensions-i18n";
 import { installMethodPatch, type PatchablePrototype } from "./prototype-patch.js";
+import { padLineToWidth } from "./header-style.js";
 import type { CleanModeConfig, CleanModeState } from "./types.js";
 
 /** 空渲染结果：条目被收起时一行都不占。 */
@@ -169,13 +173,132 @@ export function shouldRailExtensionEntry(input: ExtensionEntryRailInput): boolea
 }
 
 /**
- * 给条目的每一行加上轨道前缀。
+ * 给条目的每一行加上轨道前缀，前缀收进块自己那层底色里面。
  *
  * 调用方传入按 `width - ENTRY_RAIL_WIDTH` 渲染出来的行，前缀正好补回这两列：整行宽度不变，
- * 条目自己的底色仍然铺到右边缘。
+ * 块自己的底色仍然铺到右边缘。
+ *
+ * 前缀必须插在块**自己的底色序列之后**（而不是拼在整行前面）：块的第一行几乎都以底色序列开头，
+ * 拼在前面就会让色带从左起第 2 列才开始铺，而工具行的色带是从第 0 列铺的，两边的左边缘
+ * 正好错开两列，相邻行看上去就是一条锯齿。
  */
 export function applyEntryRail(lines: readonly string[], prefix: string): string[] {
-	return lines.map((line) => `${prefix}${line}`);
+	return lines.map((line) => {
+		const { background, content } = splitLeadingBackground(line);
+		return `${background}${prefix}${content}`;
+	});
+}
+
+/** 底色设置序列的形状：`48;5;N` / `48;2;R;G;B` / `48` 三种形式。 */
+const BACKGROUND_SET_PATTERN = String.raw`\x1b\[48(?:;5;\d+|;2;\d+;\d+;\d+)?m`;
+/** 一行里的所有底色设置序列。 */
+const EVERY_BACKGROUND_SET = new RegExp(BACKGROUND_SET_PATTERN, "g");
+/** 行首的底色设置序列；判定行有没有铺底色只看它。 */
+const LEADING_BACKGROUND_SET = new RegExp(`^${BACKGROUND_SET_PATTERN}`);
+/** 底色复位序列。 */
+const BACKGROUND_RESET = /\x1b\[49m/g;
+/** 全量属性重置：块自己的内容（例如被截断的长行）会带它。 */
+const FULL_ATTRIBUTE_RESET = "\x1b[0m";
+/** 探测底色函数的起始序列用的哨兵字符；底色函数不会改动传给它的文本。 */
+const BAND_PROBE = "\u0000";
+
+/** 一行开头的底色序列（没有时为空串）与它后面的内容。 */
+export interface LineBackgroundSplit {
+	/** 行首的底色设置序列；没有铺底色时为空串。 */
+	background: string;
+	/** 底色序列之后的内容。 */
+	content: string;
+}
+
+/** 拆出一行开头的底色设置序列；行首没铺底色时原样返回。 */
+export function splitLeadingBackground(line: string): LineBackgroundSplit {
+	const match = LEADING_BACKGROUND_SET.exec(line);
+	return match === null
+		? { background: "", content: line }
+		: { background: match[0], content: line.slice(match[0].length) };
+}
+
+/**
+ * 取底色函数的起始序列。
+ *
+ * 底色不可用（主题缺这个色键、测试替身是恒等函数）时返回空串。取到的序列用来在块内容里的
+ * 重置序列之后把底色补回来：不然被截断的长行会在省略号那一点断掉色带，右半边空着。
+ */
+export function readBandStart(band: (text: string) => string): string {
+	const probe = band(BAND_PROBE);
+	const index = probe.indexOf(BAND_PROBE);
+	return index <= 0 ? "" : probe.slice(0, index);
+}
+
+/** 去掉一行里所有的底色序列：整行要重铺成统一底色时不能留着块自己那层。 */
+export function stripBackgroundEscapes(line: string): string {
+	return line.replace(EVERY_BACKGROUND_SET, "").replace(BACKGROUND_RESET, "");
+}
+
+/**
+ * 整行重铺底色的输入。
+ */
+export interface EntryBandInput {
+	/** 块渲染出来的行（按 `width - ENTRY_RAIL_WIDTH` 渲染）。 */
+	lines: readonly string[];
+	/** 已着色的轨道前缀，如 `│ `。 */
+	prefix: string;
+	/** 底色的着色函数：工具行的已完成档或出错档。 */
+	paint: (text: string) => string;
+	/** 整行目标宽度：底色块要铺到这一列，与工具行的右边缘一致。 */
+	width: number;
+}
+
+/**
+ * 把块整体重铺成统一底色：轨道前缀与内容同属一层色带，左边缘与工具行对齐。
+ *
+ * 为什么不是把块自己的底色留下来：通知条目的块底色（`customMessageBg`）与工具行的工具底色
+ * 是两套色档，两者在列表里一行隔一行地出现就是一条条纹，读起来像表格没画完。清爽模式接管的是
+ * 一份工作记录，底色只回答「这条不是 Agent 写的字」这一个问题，所以统一成工具行那套。
+ *
+ * 只有 `pi-extensions-i18n` 画的通知条目走这里（它们的底色固定、内容里没有别人有意铺的色）；
+ * 其它块（审计行、工作流结果面板）保留自己的配色，只走 applyEntryRail 对齐左边缘。
+ */
+export function applyEntryBand(input: EntryBandInput): string[] {
+	const { lines, prefix, paint, width } = input;
+	const bandStart = readBandStart(paint);
+	return lines.map((line) => {
+		const content = stripBackgroundEscapes(line);
+		const restored =
+			bandStart === "" ? content : content.replaceAll(FULL_ATTRIBUTE_RESET, `${FULL_ATTRIBUTE_RESET}${bandStart}`);
+		return paint(padLineToWidth(`${prefix}${restored}`, width));
+	});
+}
+
+/** 接轨道的块要用的底色档：就是工具行那两档，不另开一套。 */
+export interface EntryBandPainters {
+	/** 已完成档：普通工作条目，以及非 warning/error 的通知。 */
+	success: (text: string) => string;
+	/** 出错档：warning / error 级通知，与出错工具行同色。 */
+	error: (text: string) => string;
+}
+
+/** 通知条目里的级别字符串；与 pi-extensions-i18n 的 NoticeLevel 一致。 */
+const NOTICE_LEVEL_WARNING = "warning";
+const NOTICE_LEVEL_ERROR = "error";
+
+/**
+ * 这一块该不该整行重铺底色，铺哪一档。
+ *
+ * 只重铺通知条目，且分出 warning / error 一档：它们是满宽块，夹在工具行中间就是条纹的中心；
+ * 出错级用工具行的出错档，读起来与出错工具行同色。读不出级别时按已完成档算 —— 宁可少一层
+ * 强调，也不能把一条普通回执画成错误。
+ */
+export function resolveEntryBand(input: {
+	customType?: string;
+	noticeLevel?: string;
+}): keyof EntryBandPainters | undefined {
+	if (input.customType !== NOTICE_ENTRY_TYPE) {
+		return undefined;
+	}
+	return input.noticeLevel === NOTICE_LEVEL_WARNING || input.noticeLevel === NOTICE_LEVEL_ERROR
+		? "error"
+		: "success";
 }
 
 /**
@@ -252,6 +375,12 @@ export interface ExtensionEntryPatchDeps {
 	 * 取不到着色能力把条目画坏。
 	 */
 	getEntryRailPrefix: () => string | undefined;
+	/**
+	 * 取重铺整行用的底色档（工具行的已完成档与出错档）。
+	 *
+	 * 主题缺色时这两档是恒等函数，整行退化成纯文本、宽度照旧；调用方不区分这种情况。
+	 */
+	getEntryBandPainters: () => EntryBandPainters;
 	/** 要接管的 Container 原型列表；由入口按运行时解析情况提供。 */
 	containerPrototypes: object[];
 }
@@ -383,7 +512,20 @@ export function installExtensionEntryPatch(deps: ExtensionEntryPatchDeps): () =>
 				return originalRender.call(this, width);
 			}
 			const railed = dropLeadingBlankLines(originalRender.call(this, width - ENTRY_RAIL_WIDTH));
-			return applyEntryRail(railed, railPrefix);
+			// 通知条目整行重铺成工具底色（与它上下相邻的工具行同一套）；其它块保留自己的配色。
+			const band = resolveEntryBand({
+				customType: entryHost === undefined ? undefined : readExtensionEntryCustomType(entryHost),
+				noticeLevel: entryHost === undefined ? undefined : readExtensionEntryNoticeLevel(entryHost),
+			});
+			if (band === undefined) {
+				return applyEntryRail(railed, railPrefix);
+			}
+			return applyEntryBand({
+				lines: railed,
+				prefix: railPrefix,
+				paint: deps.getEntryBandPainters()[band],
+				width,
+			});
 		};
 
 	const restores = deps.containerPrototypes.map((prototype) =>
