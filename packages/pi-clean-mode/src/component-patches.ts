@@ -31,7 +31,7 @@ import {
 import { formatDuration } from "./duration.js";
 import { debugLog } from "./debug-logger.js";
 import type { HeaderStyler } from "./header-style.js";
-import { GUTTER_GAP, GROUP_GUTTER, renderGutterPrefix, RUN_GUTTER } from "./header-style.js";
+import { GUTTER_GAP, GROUP_GUTTER, padLineToWidth, renderGutterPrefix, RUN_GUTTER } from "./header-style.js";
 import { i18n } from "./i18n.js";
 import {
 	resolveAssistantMessageRender,
@@ -271,17 +271,6 @@ function resolveToolRowBackground(
 	}
 
 	return deps.styler.successBg;
-}
-
-/**
- * 把一行补齐到渲染宽度。
- *
- * 铺底色的行必须自己补到整宽：底色块到哪结束由字符串长度决定，不补齐就会在文字结束的
- * 地方断掉，看着像一块没画完的色块。只加空格，不加可见字符。
- */
-function padToWidth(line: string, width: number): string {
-	const missing = width - visibleWidth(line);
-	return missing > 0 ? `${line}${" ".repeat(missing)}` : line;
 }
 
 /**
@@ -579,7 +568,7 @@ function buildActionGroupHeaderRow(
 	const inProgress = !state.runSettled && deps.isCurrentActionGroup(group.membership.groupId);
 	const band = inProgress ? deps.styler.pendingBg : deps.styler.successBg;
 
-	return band(padToWidth(line, width));
+	return band(padLineToWidth(line, width));
 }
 
 /**
@@ -642,7 +631,7 @@ function buildToolSummaryLine({ host, group, deps, width }: ToolRowRenderInput):
 	// 宽度小到连前缀都放不下时，宁可丢掉箭头也不能撑破布局。
 	const fitted =
 		visibleWidth(line) > width ? truncateToWidth(line, width, TRUNCATION_ELLIPSIS) : line;
-	return resolveToolRowBackground(host, deps)(padToWidth(fitted, width));
+	return resolveToolRowBackground(host, deps)(padLineToWidth(fitted, width));
 }
 
 /**

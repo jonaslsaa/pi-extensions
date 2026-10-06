@@ -16,7 +16,9 @@
  * 底色在这套语言里只出现在一个地方：工具行（成员摘要行与折叠态的组头）。它不表示
  * 层级，而是表示「这条不是 Agent 写的字」—— Pi 原生工具行本来就有底色
  * （`toolPendingBg` / `toolSuccessBg` / `toolErrorBg`），摘要行替掉原生行之后要把
- * 这层语义接回来。底色只在工具行上用：折叠头、正文、活动块都不铺。
+ * 这层语义接回来。扩展块（运行期间接上轨道的通知条目等）用的是同一套底色，
+ * 不是自己那层块底色：两种色档相邻就成了一条一行一间的条纹（见 extension-entry-patch.ts）。
+ * 底色只在工具行与这些块上用：折叠头、正文、活动块都不铺。
  *
  * 底色刻意不用来做层级：它只该出现在 diff 这类「内容本身有色」的地方。用底色区分
  * 层级有两个问题 —— 浅色主题下底色块会让整行对比度反转；而且它逼着每一行都补齐到
@@ -25,6 +27,8 @@
  * 主题缺色时对应能力退化成原样文本：宁可少一层装饰，也不能因为主题少一个键
  * 把整块渲染打断。缺色只在构造时探测一次，渲染路径上没有 try/catch。
  */
+
+import { visibleWidth } from "@earendil-works/pi-tui";
 
 /**
  * 运行级竖条：半格实心块，配加粗文案，是两级竖条里最强的一档。
@@ -144,6 +148,20 @@ function probeBackground(
 /** 原样返回文本；缺色时用它兜底。 */
 function identity(text: string): string {
 	return text;
+}
+
+/**
+ * 把一行补齐到渲染宽度。
+ *
+ * 铺底色的行必须自己补到整宽：底色块到哪结束由字符串的可见宽度决定，不补齐就会在文字结束的
+ * 地方断掉，看着像一块没画完的色块。只加空格，不加可见字符。
+ *
+ * 铺工具底色的工具行与「整行重铺成统一底色」的扩展块都要用同一份补齐逻辑，否则两处的
+ * 右边缘会各按各的算法收尾，又变成一条对不齐的锯齿（左边缘同理，见 applyEntryRail）。
+ */
+export function padLineToWidth(line: string, width: number): string {
+	const missing = width - visibleWidth(line);
+	return missing > 0 ? `${line}${" ".repeat(missing)}` : line;
 }
 
 /**

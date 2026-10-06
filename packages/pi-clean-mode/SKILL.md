@@ -68,14 +68,16 @@ Pi 自带的 `/settings` 没有扩展注册配置项的入口，所以面板由�
 | 工具行先原样跳出来、再突然被收进组里 | 登记必须早于 Pi 渲染那一行。`tool_call` / `tool_execution_start` 要等整条 assistant 消息结束才发（实测晚 300ms 上下），所以 `stream-registration.ts` 从 `message_update` 的流式内容块里就扫出工具调用并登记；开组也在同一处，且早于登记（解说出现在工具调用后面时，先把已登记的调用改挂到新组） |
 | 活动区闪或卡 | 检查是否绕过了内容签名去重而每次 tick 都请求重绘；行内容不变时必须跳过 |
 | 活动区结束后还残留 | `agent_settled` / `session_shutdown` 是否调到了 `clearActivityArea`（它会清空 `runtime.lines` / `detailLines` / `rows` 与 `runtime.runStatusLines` 并请求一次重绘） |
-| 活动区行多了底色 | 折叠头与活动块都不该铺底色（`styler.band` / `styler.chip` 已删除）。底色只铺在**工具行**（组头与成员摘要，`successBg` / `pendingBg` / `errorBg`，对应 Pi 原生的 `toolSuccessBg` / `toolPendingBg` / `toolErrorBg`），含义是「这条不是 Agent 写的字」，不是层级 |
-| 工具行底色没出来 | 主题里是否真的有 `toolSuccessBg` / `toolPendingBg` / `toolErrorBg` 三个键（缺键时 `styler.*Bg` 退化成原样文本，不报错）；测试替身没实现 `bg()` 时也一样。底色块宽度由行自己补齐（`padToWidth`），不补齐会在文字结束处断掉 |
+| 活动区行多了底色 | 折叠头与活动块都不该铺底色（`styler.band` / `styler.chip` 已删除）。底色只铺在**工具行与接轨道的通知条目**（组头与成员摘要、运行期间的 `NOTICE_ENTRY_TYPE` 条目；`successBg` / `pendingBg` / `errorBg`，对应 Pi 原生的 `toolSuccessBg` / `toolPendingBg` / `toolErrorBg`），含义是「这条不是 Agent 写的字」，不是层级 |
+| 工具行底色没出来 | 主题里是否真的有 `toolSuccessBg` / `toolPendingBg` / `toolErrorBg` 三个键（缺键时 `styler.*Bg` 退化成原样文本，不报错）；测试替身没实现 `bg()` 时也一样。底色块宽度由行自己补齐（`padLineToWidth`，`header-style.ts`），不补齐会在文字结束处断掉 |
 | 活动区行没对齐 / 竖折没出来 | 前缀常量：轮首状态行用 `RUN_GUTTER` + `GUTTER_GAP`（`activity.ts` 的 `BAND_INDENT` 由它们拼出），活动块的竖折用 `TREE_INDENT` + `├─` / `└─`（`TREE_INDENT` 为空串，竖折才与组头竖条同列）。`renderActivityRows` 按「后面还有没有子项」选分支符，截断或去掉动作行之后必须用它重拼一次，直接沿用上一轮拼好的字符串就会收口错（最后一行还挂 `├─`） |
 | 活动区显示一堆 `*` | 思考头部的成对强调符由 `stripEmphasisMarkup` 剥掉；若某条消息直接写快照而不经过 `extractThoughtHead`，就会绕过它 |
 | thinking 原文还在刷屏 | `hideThinking` 是否为 on；它靠 `resolveRenderedMessage` 在 `updateContent` 前抽掉 thinking 内容块，若某条消息看不到效果，检查该消息是否只走了 `render` 而没走 `updateContent` |
 | 折叠完全无效 | Pi 版本是否仍导出 `AssistantMessageComponent` / `ToolExecutionComponent` |
 | 清爽模式下仍有裸露的扩展行（如 `Distill` 审计行） | 该行是 `pi.appendEntry` 写的 custom entry，不在两个导出组件里。检查 `hideExtensionEntries` 是否为 on（默认 on）；条目是否在「工作窗口」内产生 —— 运行期间，或 `session_start` 后的恢复窗口；运行结束后才出现的条目不折。若两者都成立仍不隐藏，看 Pi 的 `CustomEntryComponent` 特征是否变了（本扩展靠「同时持有 entry / renderer / hasContent」识别），或该条目被注册成了 `pi-extensions-notice`（通知豁免，不折） |
 | 运行中的扩展条目 / 消息面板把左侧轨道切断 | 它应该带上 `│ ` 前缀（`shouldRailExtensionEntry`：总开关开 + 非收起态 + 运行中）。若没带上：看它首次渲染时是否已经不在运行中（归属只看首次渲染，之后不补），或 Pi 是否换了别的组件类型渲染它（补丁靠结构特征认：条目是「entry / renderer / hasContent」，消息是 Pi 的 `CustomMessageComponent` 那组「message / customRenderer / setExpanded」） |
+| 相邻行的色带左边缘一凸一凹（组头比通知块多出一块） | 前缀必须插进块自己的底色里面（`applyEntryRail` 的 `splitLeadingBackground`），不能拼在整行前面：拼在前面时块色带从第 2 列起铺，工具行从第 0 列起铺，差两列就是一条锯齿。通知条目还有第二层原因：它自己的 `customMessageBg` 与工具底色是两套色档，相邻一行一间就是条纹，要看它有没有走 `applyEntryBand`（`resolveEntryBand` 只对 `NOTICE_ENTRY_TYPE` 返回档位） |
+| 通知块的色带中途断掉 / 右半边没有底色 | `applyEntryBand` 要把块内容里的底色序列先去掉，并在全量重置（`\x1b[0m`，被截断的长行会带）之后把底色补回来（`readBandStart`）；去掉末尾的 `\x1b[49m` 后用 `padLineToWidth` 补齐再上色，色块才会铺到整宽 |
 | 每条提示前面多出一行空白（轨道上出现一行空行） | 那是 Pi 的 `CustomEntryComponent` / `CustomMessageComponent` 自带的 `Spacer(1)`。接轨道时会去掉块开头的空行（`dropLeadingBlankLines`），运行中不该再看到它。若还看得到：确认这条块是否真的接上了轨道 —— 没接轨道的块保留 Pi 原本的间距，行为与未安装本扩展时一致 |
 | `/resume` 或 `/reload` 后整段历史原样铺开 | `session_start` 是否调了 `restoreHistory`：历史消息不重放 `agent_start` / `agent_settled`，状态会停在 `createInitialState()` 的展开态，折叠就失效。注意即使收起，历史轮次也不会出现耗时头 —— 耗时与步数只存在内存里，不写进会话 |
 | `session_start` 到底拿到的哪个 reason | 调试日志里记了 `reason=startup\|reload\|new\|resume\|fork` 与处理后的 `collapsed` |
@@ -89,7 +91,7 @@ Pi 自带的 `/settings` 没有扩展注册配置项的入口，所以面板由�
 | 运行级折叠头 | 粗竖条 `▌`（`RUN_GUTTER`，加粗 + 主文字色）+ **加粗**文案 + 紧跟在文案右边的强调色箭头 |
 | 动作组头 | 细竖条 `│`（弱化色）+ 弱化色文案 + 紧跟其后的强调色箭头；**它上面那行留白**，不画竖条；整行铺工具底色（当前组 `pendingBg`，其余 `successBg`） |
 | 成员命令行 | 树形前缀（`├─`，分支符用 `dim` 色）+ 弱化色动作摘要 + 紧跟其后的强调色箭头；不画竖条（它长在组头的竖条下面）；整行铺工具底色（`host.isPartial` → `pendingBg`，`result.isError` → `errorBg`，其余 `successBg`） |
-| 运行期间的扩展条目 | 前缀 `│ `（`renderGutterPrefix`，弱化色）+ 条目本体（按 `width - 2` 渲染） |
+| 运行期间的扩展条目 | 前缀 `│ `（`renderGutterPrefix`，弱化色）+ 条目本体（按 `width - 2` 渲染）；通知条目整行重铺成工具底色（warning / error 用出错档），其它块保留自己的底色但前缀插进色块里 —— 两边的左边缘都落在第 0 列，与工具行对齐 |
 | 正文 / 工具行 | 不加任何装饰；可见的工具行也会在首行尾部加同款箭头（`insertToolRowArrow`） |
 
 **层级靠左侧竖条 + 字重 + 色档，不靠底色。** 两级竖条都从第 0 列起画（`RUN_GUTTER + GUTTER_GAP` 与 `GROUP_GUTTER + GUTTER_GAP` 同宽），所以两级文案同列；但两根竖条本身构不成一条严格对齐的连续轨道 —— 半格实心块 `▌` 画在格子左半边、居中的 `│` 画在格子中间，横向差半格（实测 x34-42 对 x41-42），所以组头上面那行（`buildActionGroupHeaderLines` 的第一行）留白，不用竖条去接上下两端：那行除了竖条什么都没有，右边没有文字接着，接上去就是一根悬在组头上面的短竖线（画过，像画错的一截）。空行仍属组头的点击块。`RUN_GUTTER` / `GROUP_GUTTER` / `GUTTER_GAP` 在 `header-style.ts` 里只定一次（两个前缀同宽，文案才同列），`activity.ts` 的 `TREE_INDENT` 为空串就是为了让 `├─` 与组头竖条同列 —— 改竖条只需改一处，但**必须同时确认两级文案列与树形前缀仍同列**。文案色档：运行级 `primary` + `bold`，组头与成员摘要 `muted`（截断在明文上做完再上色），箭头一律 `accent`。工具底色是单独一层语义（`successBg` / `pendingBg` / `errorBg`，构造时各探一次，缺键就退化成原样文本），铺完还要把整行补到渲染宽度，否则色块会在文字结束的地方断掉。
@@ -125,5 +127,5 @@ Pi 自带的 `/settings` 没有扩展注册配置项的入口，所以面板由�
 - 原型补丁在 reload / shutdown 时还原；若安装后原型被其它扩展替换，本扩展不会顶掉对方的实现。
 - 与重新注册工具类的扩展（例如 `pi-extensions-tool-display`）不冲突：本扩展不调用 `pi.registerTool`。
 - 扩展条目折叠（`src/extension-entry-patch.ts`）补丁的是 pi-tui 的 `Container.prototype.render`：Pi 没导出 `CustomEntryComponent`，只能按结构特征认。只折工作条目（运行期间 + 会话恢复窗口）；通知条目（`NOTICE_ENTRY_TYPE`）按级别分：`info` 跟着工作过程一起收，`warning` / `error` 始终可见（读不出 level 也按可见处理）。
-- 同一个补丁把**运行期间**的扩展条目与消息面板（通知、工作流结果面板、审计卡片）接上轨道（`renderGutterPrefix` + 按 `width - 2` 渲染，去掉开头自带的空行，前缀补回两列，整行宽度不变）。判定在 `shouldRailExtensionEntry`：只有「总开关开 + 非收起态 + 运行中」才加；收起态不加是因为组头本来就不显示，加一条孤立竖条反而像掉了东西。接轨道的块有两类，各用一套结构特征认：扩展条目（`entry` / `renderer` / `hasContent`）与扩展注册的消息（`message` / `customRenderer` / `setExpanded`，对应 Pi 的 `CustomMessageComponent`）；消息只接轨道，不参与条目折叠。开头那行空行是 Pi 两个组件都带的 `Spacer(1)`，运行期间密集列表里它是一行空洞，由 `dropLeadingBlankLines` 去掉（只去开头的，末尾不动；整块全空时原样返回）。
+- 同一个补丁把**运行期间**的扩展条目与消息面板（通知、工作流结果面板、审计卡片）接上轨道（`renderGutterPrefix` + 按 `width - 2` 渲染，去掉开头自带的空行，整行宽度不变）。前台前缀分两路：通知条目走 `applyEntryBand`（整行重铺成工具底色，`resolveEntryBand` 按级别选已完成档 / 出错档，块自己的 `customMessageBg` 换掉），其它块走 `applyEntryRail`（保留自己的配色，前缀插进块自己那层底色里面）—— 两路的左边缘都在第 0 列，与工具行的色带对齐（拼在整行前面会错开两列）。判定在 `shouldRailExtensionEntry`：只有「总开关开 + 非收起态 + 运行中」才加；收起态不加是因为组头本来就不显示，加一条孤立竖条反而像掉了东西。接轨道的块有两类，各用一套结构特征认：扩展条目（`entry` / `renderer` / `hasContent`）与扩展注册的消息（`message` / `customRenderer` / `setExpanded`，对应 Pi 的 `CustomMessageComponent`）；消息只接轨道，不参与条目折叠。开头那行空行是 Pi 两个组件都带的 `Spacer(1)`，运行期间密集列表里它是一行空洞，由 `dropLeadingBlankLines` 去掉（只去开头的，末尾不动；整块全空时原样返回）。
 - 轨道归属按**条目/消息对象**记，不按组件实例（`readRailOwnershipKey`，正负结果都缓存）：Pi 会重建组件，按实例记归属会让同一块的判定在重建后翻面 —— 实测启动时的提示本来不带竖条，运行中重建后突然带上了。
