@@ -16,12 +16,14 @@ import {
   registerDistillToolDisplayMiddleware,
 } from "../src/tool-display-bridge.ts";
 import { Text } from "@earendil-works/pi-tui";
-import { initTheme } from "@earendil-works/pi-coding-agent";
+import { initTheme, createSyntheticSourceInfo, type ExtensionAPI, type ToolInfo } from "@earendil-works/pi-coding-agent";
 import { fauxAssistantMessage, registerFauxProvider } from "@earendil-works/pi-ai/compat";
+import { createGrammarToolInputProperties } from "@earendil-works/pi-ai/api/constrained-sampling";
 import {
   extendDistillToolParameters,
   formatCompactCount,
   formatSessionDuration,
+  getConfigurableToolNames,
 } from "../src/index.ts";
 import {
   buildDecisionEvaluationPrompt,
@@ -76,6 +78,17 @@ function fakeToolResult(output: string, isError = false): TestResult {
     details: {},
     isError,
   } as unknown as TestResult;
+}
+
+/** 构造 pi-distill 只用得到的部分 ToolInfo：name 和 parameters。 */
+function fakeToolInfo(name: string, parameters: Record<string, unknown> = {}): ToolInfo {
+  return {
+    name,
+    description: `${name} tool`,
+    parameters,
+    exposure: "model-only",
+    sourceInfo: createSyntheticSourceInfo(`<test:${name}>`, { source: "test" }),
+  };
 }
 
 /** 为摘要处理链创建隔离配置，避免测试读取用户配置。 */
@@ -1211,6 +1224,119 @@ test("按工具开关动态注入和移除 outputRequest", () => {
   assert.equal(extendDistillToolParameters(api, loaded), 2);
   assert.equal((tools[0].parameters as any).properties.outputRequest, undefined);
   assert.deepEqual((tools[0].parameters as any).required, ["value"]);
+});
+
+test("codemode 的 schema 保持原样：grammar 约束采样只接受一个必填字符串属性", () => {
+  // pi 按“恰好一个必填字符串属性”识别 grammar 工具，多一个必填属性会让整轮模型请求在构建阶段失败。
+  const codemodeSchema = {
+    type: "object",
+    properties: { code: { type: "string" } },
+    required: ["code"],
+    additionalProperties: false,
+  };
+  const tools = [fakeToolInfo("codemode", structuredClone(codemodeSchema))];
+  const loaded = {
+    enabled: true,
+    config: {
+      minChars: 200,
+      maxChars: 100000,
+      maxOutputChars: 10000,
+      timeoutSeconds: 10,
+      timeoutRetryCount: 1,
+      errorRetryCount: 1,
+      missedCompressionRatio: 10,
+      summarizeErrors: true,
+      tools: {} as Record<string, { enabled: boolean }>,
+    },
+    render: { enabled: true, showPrompt: true, showResult: true },
+    configPath: "",
+    warnings: [],
+  };
+  const api: Pick<ExtensionAPI, "getAllTools"> = { getAllTools: () => tools };
+
+  assert.equal(extendDistillToolParameters(api, loaded), 0);
+  assert.deepEqual(tools[0].parameters, codemodeSchema);
+
+  // 配置里强行打开也不加：加了就会让整轮请求失败，所以这里必须无条件跳过。
+  loaded.config.tools = { codemode: { enabled: true } };
+  assert.equal(extendDistillToolParameters(api, loaded), 0);
+  assert.deepEqual(tools[0].parameters, codemodeSchema);
+});
+
+test("跳过注入后 pi 的 grammar 约束采样仍能识别 codemode 的 code 输入属性", () => {
+  const codemodeSchema = {
+    type: "object",
+    properties: { code: { type: "string" } },
+    required: ["code"],
+    additionalProperties: false,
+  };
+  const tools = [fakeToolInfo("codemode", structuredClone(codemodeSchema))];
+  const loaded = {
+    enabled: true,
+    config: {
+      minChars: 200,
+      maxChars: 100000,
+      maxOutputChars: 10000,
+      timeoutSeconds: 10,
+      timeoutRetryCount: 1,
+      errorRetryCount: 1,
+      missedCompressionRatio: 10,
+      summarizeErrors: true,
+      tools: {},
+    },
+    render: { enabled: true, showPrompt: true, showResult: true },
+    configPath: "",
+    warnings: [],
+  };
+  const api: Pick<ExtensionAPI, "getAllTools"> = { getAllTools: () => tools };
+  extendDistillToolParameters(api, loaded);
+
+  // 直接拿 pi-ai 的真实推断验：注入必须让 codemode 仍只有一个必填字符串属性。
+  const codemode = {
+    name: "codemode",
+    description: "Run JavaScript that calls other tools",
+    parameters: tools[0].parameters,
+    constrainedSampling: { type: "grammar" as const, variants: { openai_lark: "code: /[^]*/" } },
+  };
+  assert.equal(createGrammarToolInputProperties([codemode], true).get("codemode"), "code");
+
+  // 哨兵：多一个必填属性就是修复前那轮会话整轮报错的原因。
+  const injected = {
+    ...codemode,
+    parameters: {
+      ...structuredClone(codemodeSchema),
+      properties: { code: { type: "string" }, outputRequest: { type: "string" } },
+      required: ["code", "outputRequest"],
+    },
+  };
+  assert.throws(
+    () => createGrammarToolInputProperties([injected], true),
+    /grammar constrained sampling requires exactly one required string property/,
+  );
+});
+
+test("codemode 不出现在配置面板的工具开关里", () => {
+  const api: Pick<ExtensionAPI, "getAllTools"> = {
+    getAllTools: () => [fakeToolInfo("bash"), fakeToolInfo("codemode"), fakeToolInfo("read")],
+  };
+
+  assert.deepEqual(getConfigurableToolNames(api), ["bash", "read"]);
+});
+
+test("codemode 结果按原样返回，不进入提炼流程", async () => {
+  await withFakeSummaryConfig(async () => {
+    const original = fakeToolResult("a".repeat(500));
+    const result = await processToolResult(
+      { ...fakeSummaryContext(), toolName: "codemode" },
+      original,
+      0,
+      fakeCompletion("x".repeat(20)),
+    );
+
+    assert.equal(result, original);
+    assert.equal(result.content[0]?.text, "a".repeat(500));
+    assert.equal(result.details?.outputSummaryStatus, undefined);
+  });
 });
 
 test("pi-distill 可以追加 UI-only 保底审计", () => {

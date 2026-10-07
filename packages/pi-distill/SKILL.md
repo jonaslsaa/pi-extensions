@@ -21,7 +21,7 @@ description: "配置与排查 pi-distill 的模型、压缩阈值、重试、工
 - `minChars` 控制何时提炼，`maxChars` 与 `maxOutputChars` 控制大结果落盘和返回上限；
 - `timeoutRetryCount`、`errorRetryCount` 是额外重试次数；
 - `summarizeErrors` 默认 `true`，控制达到 `minChars` 的错误结果是否提炼；环境变量依次为 `PI_DISTILL_SUMMARIZE_ERRORS`、旧 `PI_BASH_SUMMARY_SUMMARIZE_ERRORS`；
-- `tools.<name>.enabled` 控制单个工具；`edit`、`write` 默认关闭，其他未配置工具默认开启；
+- `tools.<name>.enabled` 控制单个工具；`edit`、`write` 默认关闭，其他未配置工具默认开启；`codemode` 无法注入，开关对它无效，也不出现在面板里。
 - `render` 只控制展示，不改变提炼语义。
 
 不要把需要完整原文的调用配置成摘要；调用方应传 `outputRequest: "RAW"`。不要为非文本结果启用文本提炼假设。
