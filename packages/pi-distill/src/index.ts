@@ -50,6 +50,7 @@ import {
   buildSummarySystemPrompt,
   buildSummaryUserPrompt,
   buildJsonRepairPrompt,
+  canAcceptOutputRequest,
   decideOutputSummary,
   getDistillConfigPath,
   isRawSummary,
@@ -978,7 +979,7 @@ export async function processToolResult(
     }) });
   }
 
-  if (config && loaded.enabled && !isDistillToolEnabled(config, context.toolName)) return result;
+  if (config && loaded.enabled && (!canAcceptOutputRequest(context.toolName) || !isDistillToolEnabled(config, context.toolName))) return result;
 
   if (hasNonTextContent(result)) {
     return attachDiagnostics(result, {
@@ -1293,7 +1294,10 @@ export function extendDistillToolParameters(
 ): number {
   let extended = 0;
   for (const tool of pi.getAllTools()) {
-    const enabled = loaded.enabled && Boolean(loaded.config) && isDistillToolEnabled(loaded.config, tool.name);
+    const enabled = loaded.enabled
+      && Boolean(loaded.config)
+      && canAcceptOutputRequest(tool.name)
+      && isDistillToolEnabled(loaded.config, tool.name);
     if (extendOutputRequestParameter(tool, enabled, reportWarning) && enabled) extended += 1;
   }
   return extended;
@@ -1390,12 +1394,13 @@ async function saveDistillConfigFile(
   onSaved?.();
 }
 
-/** 当前可配置的工具名，按名字排序去重。 */
-function getConfigurableToolNames(pi: Pick<ExtensionAPI, "getAllTools">): string[] {
+/** 当前可配置的工具名，按名字排序去重；不能注入 outputRequest 的工具不出现在面板里。 */
+export function getConfigurableToolNames(pi: Pick<ExtensionAPI, "getAllTools">): string[] {
   return [...new Set(
     pi.getAllTools()
       .map((tool) => tool.name)
-      .filter((name): name is string => typeof name === "string" && name.trim().length > 0),
+      .filter((name): name is string => typeof name === "string" && name.trim().length > 0)
+      .filter((name) => canAcceptOutputRequest(name)),
   )].sort();
 }
 
@@ -1584,6 +1589,7 @@ export default function piDistillExtension(pi: ExtensionAPI) {
     const loaded = loadDistillConfig();
     const enabled = loaded.enabled
       && Boolean(loaded.config)
+      && canAcceptOutputRequest(event.toolName)
       && isDistillToolEnabled(loaded.config, event.toolName);
     pendingCalls.set(event.toolCallId, {
       enabled,

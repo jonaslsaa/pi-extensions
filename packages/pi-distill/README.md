@@ -116,7 +116,7 @@ pi-distill uses the actual result and configuration to keep it, distill it, or w
 Agent consumes a result suited to the current decision, with auditable diagnostics
 ```
 
-1. At session start, the extension adds required `outputRequest` to every enabled active tool whose parameter schema is an object. `edit` and `write` are disabled by default; other tools are enabled unless configured otherwise. It does not hard-code `bash`, `read`, `grep`, or `find`.
+1. At session start, the extension adds required `outputRequest` to every enabled active tool whose parameter schema is an object. `edit` and `write` are disabled by default; other tools are enabled unless configured otherwise. It does not hard-code `bash`, `read`, `grep`, or `find`. `codemode` is the one exception and is skipped entirely: it uses pi's grammar-constrained sampling, which accepts exactly one required string property, so a second required property would fail the whole model request. This cannot be turned on from the configuration panel.
 2. The `tool_call` handler captures the parameter and removes it before forwarding the call, so the underlying tool never receives the extension-only field.
 3. The `tool_result` handler sees the actual output and decides what to do; it does not rely on the agent predicting the output size.
 4. Every tool call must include a non-empty `outputRequest`. A prompt containing only `RAW` explicitly requests the original. Any other non-empty prompt permits distillation once the configured threshold is reached.
@@ -145,7 +145,7 @@ The distillation prompt strictly follows the locale selected by `/config:languag
 
 ## Scope and boundaries
 
-- Handles every enabled active tool with an object parameter schema; whether `outputRequest` can be injected is determined by the tool schema, not a fixed allowlist.
+- Handles every enabled active tool with an object parameter schema; whether `outputRequest` can be injected is determined by the tool schema, not a fixed allowlist. `codemode` is the only tool skipped: pi's grammar-constrained sampling requires exactly one required string property, so its results are returned untouched and it has no configuration row.
 - Registers no replacement tools, does not change tool execution semantics, and does not require a separately installed `pi-tool-display` host package.
 - Text distillation is lossy; use `RAW` when completeness matters.
 - Non-text results are a completeness boundary: images, audio, binary data, and mixed content bypass text distillation.
