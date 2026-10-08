@@ -2076,12 +2076,21 @@ export default function subagentsExtension(pi: ExtensionAPI) {
   (globalThis as any).__pi_subagents = { launchSubagent, watchSubagent };
 
   // Capture the UI context for widget updates
+  // Module state is shared by every session in this process. Another extension can run extra
+  // SDK sessions in-process (no UI) that load this extension too: they must not take over the
+  // session's ctx (it goes stale once they are disposed) or tear down its running agents.
+  let ownsModuleState = false;
   pi.on("session_start", (_event, ctx) => {
+    if (latestCtx && !ctx.hasUI) return;
+    ownsModuleState = true;
     latestCtx = ctx;
   });
 
   // Clean up on session shutdown
   pi.on("session_shutdown", (_event, _ctx) => {
+    if (!ownsModuleState) return;
+    ownsModuleState = false;
+    latestCtx = null;
     if (widgetInterval) {
       clearInterval(widgetInterval);
       widgetInterval = null;
