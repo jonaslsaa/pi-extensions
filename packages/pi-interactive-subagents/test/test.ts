@@ -2577,6 +2577,27 @@ describe("in-process sessions sharing this module", () => {
       testApi.runningSubagents.delete(agent.id);
     }
   });
+
+  it("leaves a newer UI session's state alone when the session it replaced shuts down", () => {
+    const testApi = (subagentsModule as any).__test__;
+    const agent = createWidgetAgentFixture({ id: VISIBLE_AGENT_ID, name: VISIBLE_AGENT_NAME });
+    const old = session(true);
+    const next = session(true);
+    try {
+      old.emit("session_start");
+      next.emit("session_start");
+      testApi.runningSubagents.set(agent.id, agent);
+      old.emit("session_shutdown");
+      old.dispose();
+
+      assert.ok(testApi.runningSubagents.has(agent.id), "the newer session's agent must stay watched");
+      testApi.updateWidget();
+      assert.equal(next.widgets.length, 1, "the widget renders through the newer session's ctx");
+    } finally {
+      next.emit("session_shutdown");
+      testApi.runningSubagents.delete(agent.id);
+    }
+  });
 });
 
 describe("cmux.ts", () => {
